@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'yelp_service.dart'; 
+import 'location_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -33,6 +34,7 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
   bool isLoading = true; 
   List<Restaurant> activeRestaurants = []; 
   final YelpService _yelpService = YelpService();
+  final LocationService _locationService = LocationService();
 
   @override
   void initState() {
@@ -41,13 +43,27 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
   }
 
   Future<void> _loadInitialData() async {
-    //  Helsinki coordinates temporarily to test
-    final results = await _yelpService.getRestaurants(60.1699, 24.9384);
-    
-    setState(() {
-      activeRestaurants = results;
-      isLoading = false;
-    });
+    // 1. Ask the phone for the current GPS coordinates
+    final position = await _locationService.getCurrentLocation();
+
+    // 2. If the user allowed tracking, use their real coordinates!
+    if (position != null) {
+      final results = await _yelpService.getRestaurants(
+        position.latitude, 
+        position.longitude
+      );
+      
+      setState(() {
+        activeRestaurants = results;
+        isLoading = false;
+      });
+    } else {
+      // 3. If they denied it, stop loading and maybe show an error
+      setState(() {
+        isLoading = false;
+        print("Could not get location. User denied permission.");
+      });
+    }
   }
 
   void _handleNextCard() {
@@ -108,7 +124,17 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                             : Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.restaurant, size: 80, color: Colors.redAccent),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      activeRestaurants[currentCardIndex].imageUrl,
+                                      height: 250,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => 
+                                          const Icon(Icons.image_not_supported, size: 80, color: Colors.grey),
+                                    ),
+                                  ),
                                   const SizedBox(height: 20),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -120,7 +146,7 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                                   ),
                                   const SizedBox(height: 10),
                                   Text(
-                                    "⭐⭐⭐⭐ (${activeRestaurants[currentCardIndex].rating})", 
+                                    "${'⭐' * activeRestaurants[currentCardIndex].rating.round()} (${activeRestaurants[currentCardIndex].rating})", 
                                     style: const TextStyle(fontSize: 18, color: Colors.orange)
                                   ),
                                 ],
