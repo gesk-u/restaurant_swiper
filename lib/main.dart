@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'yelp_service.dart'; 
 
 void main() {
   runApp(const MyApp());
@@ -28,22 +29,33 @@ class RestaurantSwipeScreen extends StatefulWidget {
 }
 
 class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
-  // Simple track-index pointer to simulate mock state arrays manually
   int currentCardIndex = 0;
-  final List<String> dummyRestaurants = [
-    "Pizzeria Luce", 
-    "Burger Joint", 
-    "Sushi Express", 
-    "Taco House"
-  ];
+  bool isLoading = true; 
+  List<Restaurant> activeRestaurants = []; 
+  final YelpService _yelpService = YelpService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData(); // Trigger the network call when app opens
+  }
+
+  Future<void> _loadInitialData() async {
+    //  Helsinki coordinates temporarily to test
+    final results = await _yelpService.getRestaurants(60.1699, 24.9384);
+    
+    setState(() {
+      activeRestaurants = results;
+      isLoading = false;
+    });
+  }
 
   void _handleNextCard() {
-    if (currentCardIndex < dummyRestaurants.length - 1) {
+    if (currentCardIndex < activeRestaurants.length - 1) {
       setState(() {
         currentCardIndex++;
       });
     } else {
-      // Endless stack check logic triggers here automatically
       print("End of list reached. Time to call Yelp pagination!");
     }
   }
@@ -67,7 +79,6 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            // Card Stack Container Area
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -89,20 +100,31 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Display the text representation of our current active business node
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.restaurant, size: 80, color: Colors.redAccent),
-                            const SizedBox(height: 20),
-                            Text(
-                              dummyRestaurants[currentCardIndex],
-                              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text("⭐⭐⭐⭐ (4.5)", style: TextStyle(fontSize: 18, color: Colors.orange)),
-                          ],
-                        ),
+                        // If data is loading, show a spinner. If not, show the real text
+                        isLoading 
+                        ? const CircularProgressIndicator(color: Colors.redAccent)
+                        : activeRestaurants.isEmpty 
+                            ? const Text("No restaurants found!")
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.restaurant, size: 80, color: Colors.redAccent),
+                                  const SizedBox(height: 20),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                    child: Text(
+                                      activeRestaurants[currentCardIndex].name,
+                                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    "⭐⭐⭐⭐ (${activeRestaurants[currentCardIndex].rating})", 
+                                    style: const TextStyle(fontSize: 18, color: Colors.orange)
+                                  ),
+                                ],
+                              ),
                       ],
                     ),
                   ),
@@ -110,14 +132,13 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
               ),
             ),
             
-            // Interaction Action Bar Actions (Previous vs Next triggers)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 30.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _handlePreviousCard,
+                    onPressed: isLoading ? null : _handlePreviousCard,
                     icon: const Icon(Icons.arrow_back),
                     label: const Text("Previous"),
                     style: ElevatedButton.styleFrom(
@@ -127,7 +148,7 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: _handleNextCard,
+                    onPressed: isLoading ? null : _handleNextCard,
                     icon: const Icon(Icons.arrow_forward),
                     label: const Text("Next"),
                     style: ElevatedButton.styleFrom(
