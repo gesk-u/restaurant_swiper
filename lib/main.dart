@@ -3,8 +3,15 @@ import 'yelp_service.dart';
 import 'location_service.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 
+import 'package:device_preview/device_preview.dart';
+
 void main() {
-  runApp(const MyApp());
+  runApp(
+    DevicePreview(
+      enabled: true,
+      builder: (context) => const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -31,10 +38,13 @@ class RestaurantSwipeScreen extends StatefulWidget {
 }
 
 class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
+  // Keeping track of our data
   int currentCardIndex = 0;
   bool isLoading = true; 
-  int _currentOffset = 0;
+  int _currentOffset = 0; // Needed for pagination
   List<Restaurant> activeRestaurants = []; 
+  
+  // Services
   final YelpService _yelpService = YelpService();
   final LocationService _locationService = LocationService();
   final CardSwiperController _swiperController = CardSwiperController();
@@ -42,16 +52,17 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInitialData(); // Trigger the network call when app opens
+    _loadInitialData(); 
   }
 
+  // Load the first batch of restaurants near the user
   Future<void> _loadInitialData() async {
-    // 1. Ask the phone for the current GPS coordinates
     final position = await _locationService.getCurrentLocation();
 
-    // 2. If the user allowed tracking, use their real coordinates!
     if (position != null) {
-      print(" REAL GPS COORDINATES: Latitude: ${position.latitude}, Longitude: ${position.longitude}");
+      // Just printing these for debugging, remove before release
+      print("Got location: ${position.latitude}, ${position.longitude}");
+      
       final results = await _yelpService.getRestaurants(
         position.latitude, 
         position.longitude
@@ -62,43 +73,34 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
         isLoading = false;
       });
     } else {
-      // 3. If they denied it, stop loading and maybe show an error
       setState(() {
         isLoading = false;
-        print("Could not get location. User denied permission.");
+        print("Couldn't get user location, check permissions?");
       });
     }
   }
 
+  // Getnear the end of the list
   Future<void> _fetchMoreRestaurants() async {
-    // 1. Increment offset for the next batch
-    _currentOffset += 20;
+    _currentOffset += 20; 
 
-    // 2. Fetch new data using the same coordinates
     final position = await _locationService.getCurrentLocation();
     if (position != null) {
       final newResults = await _yelpService.getRestaurants(
         position.latitude, 
         position.longitude,
-        offset: _currentOffset // We pass the new offset here!
+        offset: _currentOffset
       );
       
-      // 3. Add the new restaurants to our current list
       setState(() {
         activeRestaurants.addAll(newResults);
       });
     }
   }
 
-  void _handleNextCard() {
-      // Throws the card off the screen to the left
-      _swiperController.swipe(CardSwiperDirection.left);
-    }
-
-    void _handlePreviousCard() {
-      // Animates the previously dismissed card back onto the screen from the left!
-      _swiperController.undo();
-    }
+  // Swiper controls
+  void _handleNextCard() => _swiperController.swipe(CardSwiperDirection.left);
+  void _handlePreviousCard() => _swiperController.undo();
 
   @override
   Widget build(BuildContext context) {
@@ -108,121 +110,123 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
         backgroundColor: Colors.redAccent,
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            Expanded(
-              child: Center( 
-                child: SizedBox(
-                  width: 400, 
-                  child: isLoading 
-                    ? const Center(child: CircularProgressIndicator(color: Colors.redAccent))
-                    : activeRestaurants.isEmpty 
-                        ? const Center(child: Text("No restaurants found!"))
-                        : CardSwiper(
-                            controller: _swiperController,
-                            cardsCount: activeRestaurants.length,
-                            numberOfCardsDisplayed: 2, 
-                            backCardOffset: const Offset(0, 0),
-                            padding: const EdgeInsets.all(24.0),
-                            
-                            // MOVE ON-SWIPE UP HERE, AS A DIRECT PROPERTY OF CARDSWIPER
-                            onSwipe: (previousIndex, currentIndex, direction) {
-                              if (currentIndex != null && currentIndex >= activeRestaurants.length - 3) {
-                                _fetchMoreRestaurants();
-                              }
-                              return true;
-                            },
-                            
-                            cardBuilder: (context, index, horizontalThresholdPercentage, verticalThresholdPercentage) {
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 10,
-                                      spreadRadius: 2,
-                                    )
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Expanded(
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
-                                              child: Image.network(
-                                                activeRestaurants[index].imageUrl,
-                                                width: double.infinity,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) => 
-                                                    const Icon(Icons.image_not_supported, size: 80, color: Colors.grey),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 20),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                            child: Text(
-                                              activeRestaurants[index].name,
-                                              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Text(
-                                            "${'⭐' * activeRestaurants[index].rating.round()} (${activeRestaurants[index].rating})", 
-                                            style: const TextStyle(fontSize: 18, color: Colors.orange)
-                                          ),
-                                          const SizedBox(height: 20),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            // Check if we are in portrait mode
+            bool isPortrait = orientation == Orientation.portrait;
+
+            return Column(
+              children: [
+                const SizedBox(height: 20),
+                Expanded(
+                  child: Center(
+                    child: SizedBox(
+                      // Landscape gets more width to avoid a narrow, awkward card
+                      width: isPortrait ? 400 : 650, 
+                      child: isLoading
+                          ? const Center(child: CircularProgressIndicator(color: Colors.redAccent))
+                          : activeRestaurants.isEmpty
+                              ? const Center(child: Text("No restaurants found!"))
+                              : CardSwiper(
+                                  controller: _swiperController,
+                                  cardsCount: activeRestaurants.length,
+                                  numberOfCardsDisplayed: 2,
+                                  backCardOffset: const Offset(0, 0),
+                                  padding: const EdgeInsets.all(24.0),
+                                  onSwipe: (previousIndex, currentIndex, direction) {
+                                    if (currentIndex != null && currentIndex >= activeRestaurants.length - 3) {
+                                      _fetchMoreRestaurants();
+                                    }
+                                    return true;
+                                  },
+                                  cardBuilder: (context, index, horizontalThresholdPercentage, verticalThresholdPercentage) {
+                                    return Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, spreadRadius: 2)
                                         ],
                                       ),
-                                    ],
-                                  ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        // The layout changes based on isPortrait
+                                        child: isPortrait
+                                            ? _buildPortraitCard(index)
+                                            : _buildLandscapeCard(index),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 30.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: isLoading ? null : _handlePreviousCard,
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text("Previous"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[400],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    ),
+                // Navigation controls
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 30.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: isLoading ? null : _handlePreviousCard,
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text("Previous"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[400], foregroundColor: Colors.white),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: isLoading ? null : _handleNextCard,
+                        icon: const Icon(Icons.arrow_forward),
+                        label: const Text("Next"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                      ),
+                    ],
                   ),
-                  ElevatedButton.icon(
-                    onPressed: isLoading ? null : _handleNextCard,
-                    icon: const Icon(Icons.arrow_forward),
-                    label: const Text("Next"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          ],
+                )
+              ],
+            );
+          },
         ),
+      ),
+    );
+  }
+
+  Widget _buildPortraitCard(int index) {
+    return Column(
+      children: [
+        Expanded(child: _buildImage(index)),
+        _buildInfo(index),
+      ],
+    );
+  }
+
+  Widget _buildLandscapeCard(int index) {
+    return Row(
+      children: [
+        Expanded(child: _buildImage(index)),
+        Expanded(child: _buildInfo(index)),
+      ],
+    );
+  }
+
+  Widget _buildImage(int index) {
+    return Image.network(
+      activeRestaurants[index].imageUrl,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 80, color: Colors.grey),
+    );
+  }
+
+  Widget _buildInfo(int index) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(activeRestaurants[index].name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          const SizedBox(height: 10),
+          Text("${'⭐' * activeRestaurants[index].rating.round()} (${activeRestaurants[index].rating})", style: const TextStyle(fontSize: 18, color: Colors.orange)),
+        ],
       ),
     );
   }
