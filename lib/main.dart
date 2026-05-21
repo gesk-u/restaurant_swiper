@@ -33,6 +33,7 @@ class RestaurantSwipeScreen extends StatefulWidget {
 class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
   int currentCardIndex = 0;
   bool isLoading = true; 
+  int _currentOffset = 0;
   List<Restaurant> activeRestaurants = []; 
   final YelpService _yelpService = YelpService();
   final LocationService _locationService = LocationService();
@@ -69,6 +70,26 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
     }
   }
 
+  Future<void> _fetchMoreRestaurants() async {
+    // 1. Increment offset for the next batch
+    _currentOffset += 20;
+
+    // 2. Fetch new data using the same coordinates
+    final position = await _locationService.getCurrentLocation();
+    if (position != null) {
+      final newResults = await _yelpService.getRestaurants(
+        position.latitude, 
+        position.longitude,
+        offset: _currentOffset // We pass the new offset here!
+      );
+      
+      // 3. Add the new restaurants to our current list
+      setState(() {
+        activeRestaurants.addAll(newResults);
+      });
+    }
+  }
+
   void _handleNextCard() {
       // Throws the card off the screen to the left
       _swiperController.swipe(CardSwiperDirection.left);
@@ -101,9 +122,18 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                         : CardSwiper(
                             controller: _swiperController,
                             cardsCount: activeRestaurants.length,
-                            numberOfCardsDisplayed: 2, // Shows the next card peeking out behind!
-                            backCardOffset: const Offset(0, 40),
+                            numberOfCardsDisplayed: 2, 
+                            backCardOffset: const Offset(0, 0),
                             padding: const EdgeInsets.all(24.0),
+                            
+                            // MOVE ON-SWIPE UP HERE, AS A DIRECT PROPERTY OF CARDSWIPER
+                            onSwipe: (previousIndex, currentIndex, direction) {
+                              if (currentIndex != null && currentIndex >= activeRestaurants.length - 3) {
+                                _fetchMoreRestaurants();
+                              }
+                              return true;
+                            },
+                            
                             cardBuilder: (context, index, horizontalThresholdPercentage, verticalThresholdPercentage) {
                               return Container(
                                 decoration: BoxDecoration(
@@ -130,7 +160,6 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                                               borderRadius: BorderRadius.circular(12),
                                               child: Image.network(
                                                 activeRestaurants[index].imageUrl,
-                                                // The height: 250 line is GONE!
                                                 width: double.infinity,
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (context, error, stackTrace) => 
@@ -152,6 +181,7 @@ class _RestaurantSwipeScreenState extends State<RestaurantSwipeScreen> {
                                             "${'⭐' * activeRestaurants[index].rating.round()} (${activeRestaurants[index].rating})", 
                                             style: const TextStyle(fontSize: 18, color: Colors.orange)
                                           ),
+                                          const SizedBox(height: 20),
                                         ],
                                       ),
                                     ],
